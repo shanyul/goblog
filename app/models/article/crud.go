@@ -3,7 +3,10 @@ package article
 import (
 	"goblog/pkg/logger"
 	"goblog/pkg/model"
+	"goblog/pkg/pagination"
+	"goblog/pkg/route"
 	"goblog/pkg/types"
+	"net/http"
 )
 
 // Get 通过 ID 获取文章
@@ -11,7 +14,7 @@ func Get(idString string) (Article, error){
 	var article Article
 	id := types.StringToInt(idString)
 	
-	if err := model.DB.First(&article, id).Error; err != nil {
+	if err := model.DB.Preload("User").First(&article, id).Error; err != nil {
 		return article, err
 	}
 
@@ -19,14 +22,20 @@ func Get(idString string) (Article, error){
 }
 
 // GetAll 获取文章列表
-func GetAll() ([]Article, error) {
-	var articles []Article
+func GetAll(r *http.Request, perPage int) ([]Article, pagination.ViewData, error) {
 
-	if err := model.DB.Find(&articles).Error; err != nil {
-		return articles, err
-	}
+    // 1. 初始化分页实例
+    db := model.DB.Model(Article{}).Order("created_at desc")
+    _pager := pagination.New(r, db, route.Name2URL("articles.index"), perPage)
 
-	return articles, nil
+    // 2. 获取视图数据
+    viewData := _pager.Paging()
+
+    // 3. 获取数据
+    var articles []Article
+    _pager.Results(&articles)
+
+    return articles, viewData, nil
 }
 
 // Create 创建文章，通过 article.ID 来判断是否创建成功
@@ -59,4 +68,13 @@ func (article *Article) Delete() (rowsAffected int64, err error) {
     }
 
     return result.RowsAffected, nil
+}
+
+// GetByUserID 获取全部文章
+func GetByUserID(uid string) ([]Article, error) {
+    var articles []Article
+    if err := model.DB.Where("user_id = ?", uid).Preload("User").Find(&articles).Error; err != nil {
+        return articles, err
+    }
+    return articles, nil
 }
